@@ -1,22 +1,30 @@
-// src/index.ts
-import { Course } from "./domain/models/Course";
-import { Module } from "./domain/models/Module";
+import express from "express";
+import { PostgresCourseRepository } from "./adapters/outbound/PostgresCourseRepository";
+import { CourseService } from "./application/CourseService";
+import { CourseController } from "./adapters/inbound/rest/CourseController";
 
-try {
-   const course = new Course({
-      id: "course-101",
-      title: "Introduction to Hexagonal Architecture",
-      description: "Learn how to build decoupled systems"
-   });
+const app = express();
+const port = process.env.PORT || 3000;
 
-   course.addModule(new Module({
-      id: "mod-1",
-      title: "Theoretical Background",
-      description: "History of Ports & Adapters",
-      order: 1
-   }));
+app.use(express.json());
 
-   console.log(`Initialized Course: "${course.title}" with ${course.modules.length} module(s).`);
-} catch (error: any) {
-   console.error("Domain Error:", error.message);
-}
+// 1. Instantiate Outbound Adapter
+const courseRepository = new PostgresCourseRepository();
+
+// 2. Instantiate Application Core, injecting the Outbound Adapter
+const courseService = new CourseService(courseRepository);
+
+// 3. Instantiate Inbound Adapter, injecting the Service
+const courseController = new CourseController(courseService);
+
+// 4. Mount API Routes
+app.use("/api/courses", courseController.getRouter());
+
+// Simple healthcheck
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "UP" });
+});
+
+app.listen(port, () => {
+  console.log(`Course Service running on port ${port}`);
+});
