@@ -1,5 +1,6 @@
-import { Course } from "../../domain/models/Course";
+import { Course } from "./Course";
 
+// --- INBOUND PORT ---
 export interface CreateCourseDTO {
    title: string;
    description: string;
@@ -17,4 +18,12 @@ export interface ICourseService {
    getAllCourses(): Promise<Course[]>;
    addModuleToCourse(courseId: string, dto: AddModuleDTO): Promise<Course>;
    deleteCourse(id: string): Promise<void>;
+}
+
+// --- OUTBOUND PORT ---
+export interface ICourseRepository {
+   save(course: Course): Promise<void>;
+   findById(id: string): Promise<Course | null>;
+   findAll(): Promise<Course[]>;
+   delete(id: string): Promise<void>;
 }

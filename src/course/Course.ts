@@ -1,5 +1,5 @@
 import { Module } from "./Module";
-import { DomainException } from "../exceptions/DomainException";
+import { DomainException } from "../shared/DomainException";
 
 export interface CourseProps {
    id: string;
@@ -34,18 +34,19 @@ export class Course {
    get description(): string { return this._description; }
    get metadata(): Record<string, any> { return this._metadata; }
    get modules(): Module[] { 
-      // Return a shallow copy to protect internal state encapsulation
       return [...this._modules]; 
    }
 
-   public updateMetadata(key: string, value: any): void {
-      this._metadata[key] = value;
+   public updateDetails(title: string, description: string): void {
+      if (!title.trim()) throw new DomainException("Title is required");
+      this._title = title;
+      this._description = description;
    }
 
    public addModule(module: Module): void {
       const exists = this._modules.some(m => m.id === module.id);
       if (exists) {
-         throw new DomainException(`Module with ID ${module.id} is already in the course`);
+         throw new DomainException(`Module with ID ${module.id} already exists`);
       }
       this._modules.push(module);
       this.sortModules();
