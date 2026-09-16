@@ -11,6 +11,7 @@ export interface PracticeSettings {
   questionCount: number;
   soundEffects: boolean;
   dictationMode: boolean;
+  reducePulse: boolean;
 }
 
 const DEFAULT_SETTINGS: PracticeSettings = {
@@ -24,6 +25,7 @@ const DEFAULT_SETTINGS: PracticeSettings = {
   questionCount: 10,
   soundEffects: true,
   dictationMode: false,
+  reducePulse: false,
 };
 
 export const usePracticeSettings = () => {
@@ -53,7 +55,8 @@ export const usePracticeSettings = () => {
     try {
       isSyncing.value = true;
       syncError.value = null;
-      const apiBase = 'http://localhost:3001';
+      const config = useRuntimeConfig();
+      const apiBase = config.public?.apiBase || 'http://localhost:3001';
       await $fetch(`${apiBase}/api/users/settings`, {
         method: 'PUT',
         headers: {
@@ -79,7 +82,8 @@ export const usePracticeSettings = () => {
 
     try {
       isSyncing.value = true;
-      const apiBase = 'http://localhost:3001';
+      const config = useRuntimeConfig();
+      const apiBase = config.public?.apiBase || 'http://localhost:3001';
       const res = await $fetch<{ success: boolean; settings: PracticeSettings }>(
         `${apiBase}/api/users/settings`,
         {

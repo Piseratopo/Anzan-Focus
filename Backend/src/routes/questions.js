@@ -25,6 +25,8 @@ async function saveQuestionPlay(req, res, next) {
          timeTaken,
          questionIndex,
          totalQuestions,
+         bookmarked,
+         sessionId,
          settings,
       } = req.body;
 
@@ -39,6 +41,7 @@ async function saveQuestionPlay(req, res, next) {
       const questionData = {
          userId: req.uid,
          uid: req.uid, // 1-N reference to user
+         sessionId: sessionId || null,
          expressionStr: String(expressionStr || displayStr || ''),
          displayStr: String(displayStr || expressionStr || ''),
          operands: Array.isArray(operands) ? operands.map(Number) : [],
@@ -51,6 +54,7 @@ async function saveQuestionPlay(req, res, next) {
          timeTaken: typeof timeTaken === 'number' && !isNaN(timeTaken) ? Math.max(0, timeTaken) : 0,
          questionIndex: typeof questionIndex === 'number' ? questionIndex : null,
          totalQuestions: typeof totalQuestions === 'number' ? totalQuestions : null,
+         bookmarked: Boolean(bookmarked),
          settings: typeof settings === 'object' && settings !== null ? settings : {},
          createdAt: FieldValue.serverTimestamp(),
       };
@@ -75,6 +79,62 @@ async function saveQuestionPlay(req, res, next) {
 }
 
 /**
+ * POST /api/questions/batch
+ * Saves multiple questions in a single Firestore batch write.
+ */
+router.post('/batch', async (req, res, next) => {
+   try {
+      const { questions = [], sessionId = null } = req.body;
+
+      if (!Array.isArray(questions) || questions.length === 0) {
+         return res.status(400).json({ error: '`questions` array is required.' });
+      }
+
+      const batch = db.batch();
+      const savedItems = [];
+
+      for (let i = 0; i < questions.length; i++) {
+         const q = questions[i];
+         const docRef = db.collection('savedQuestions').doc();
+         const data = {
+            userId: req.uid,
+            uid: req.uid,
+            sessionId: q.sessionId || sessionId || null,
+            expressionStr: String(q.expressionStr || q.displayStr || ''),
+            displayStr: String(q.displayStr || q.expressionStr || ''),
+            operands: Array.isArray(q.operands) ? q.operands.map(Number) : [],
+            operators: Array.isArray(q.operators) ? q.operators.map(String) : [],
+            userAnswer: q.userAnswer !== null && q.userAnswer !== undefined && !isNaN(Number(q.userAnswer))
+               ? Number(q.userAnswer)
+               : null,
+            correctAnswer: Number(q.correctAnswer ?? 0),
+            status: ['correct', 'incorrect', 'time_up'].includes(q.status) ? q.status : 'unknown',
+            timeTaken: typeof q.timeTaken === 'number' && !isNaN(q.timeTaken) ? Math.max(0, q.timeTaken) : 0,
+            questionIndex: q.questionIndex ?? i + 1,
+            totalQuestions: q.totalQuestions ?? questions.length,
+            bookmarked: Boolean(q.bookmarked),
+            settings: q.settingsSnapshot || q.settings || {},
+            createdAt: FieldValue.serverTimestamp(),
+         };
+
+         batch.set(docRef, data);
+         savedItems.push({ id: docRef.id, ...data, createdAt: new Date().toISOString() });
+      }
+
+      await batch.commit();
+
+      res.status(201).json({
+         success: true,
+         count: savedItems.length,
+         questions: savedItems,
+         message: `${savedItems.length} questions saved to history.`,
+      });
+   } catch (err) {
+      next(err);
+   }
+});
+
+/**
  * POST /api/questions/save and POST /api/questions
  * Saves a played question into top-level savedQuestions linked by userId.
  */
@@ -84,44 +144,82 @@ router.post('/', saveQuestionPlay);
 /**
  * GET /api/questions and GET /api/questions/saved
  * Retrieves saved questions for the authenticated user from the main savedQuestions collection.
+ * Query params:
+ *   limit      - max items to return (default 20, max 100)
+ *   status     - optional filter: 'correct' | 'incorrect' | 'time_up'
+ *   bookmarked - optional filter: 'true' (returns only bookmarked questions)
+ *   sessionId  - optional filter by session ID
  */
 async function getSavedQuestions(req, res, next) {
    try {
-      const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 100);
+      const limit = Math.min(parseInt(req.query.limit ?? '20', 10), 100);
+      const statusFilter = req.query.status;
+      const bookmarkedFilter = req.query.bookmarked;
+      const sessionFilter = req.query.sessionId;
 
-      let docs = [];
+      // Fetch a large batch so we can compute stats + filter in-memory
+      let allDocs = [];
       try {
          const snap = await db
             .collection('savedQuestions')
             .where('userId', '==', req.uid)
             .orderBy('createdAt', 'desc')
-            .limit(limit)
+            .limit(500)
             .get();
-         docs = snap.docs;
+         allDocs = snap.docs;
       } catch (queryErr) {
-         // Fallback if composite index is pending: filter by userId and sort in-memory
+         // Fallback if composite index is pending
          const fallbackSnap = await db
             .collection('savedQuestions')
             .where('userId', '==', req.uid)
-            .limit(limit * 2)
+            .limit(500)
             .get();
 
-         docs = fallbackSnap.docs.sort((a, b) => {
+         allDocs = fallbackSnap.docs.sort((a, b) => {
             const timeA = a.data().createdAt?.toMillis ? a.data().createdAt.toMillis() : 0;
             const timeB = b.data().createdAt?.toMillis ? b.data().createdAt.toMillis() : 0;
             return timeB - timeA;
-         }).slice(0, limit);
+         });
       }
 
-      const questions = docs.map((doc) => ({
-         id: doc.id,
-         ...doc.data(),
-      }));
+      // Compute overall stats across all user questions before filtering
+      const stats = {
+         total: allDocs.length,
+         correct: allDocs.filter((d) => d.data().status === 'correct').length,
+         incorrect: allDocs.filter((d) => d.data().status === 'incorrect').length,
+         time_up: allDocs.filter((d) => d.data().status === 'time_up').length,
+         bookmarked: allDocs.filter((d) => Boolean(d.data().bookmarked)).length,
+      };
 
-      res.json({
-         success: true,
-         questions,
+      // Apply optional status, bookmarked, and sessionId filters
+      let filteredDocs = allDocs;
+      if (statusFilter && ['correct', 'incorrect', 'time_up'].includes(statusFilter)) {
+         filteredDocs = filteredDocs.filter((doc) => doc.data().status === statusFilter);
+      }
+      if (bookmarkedFilter === 'true') {
+         filteredDocs = filteredDocs.filter((doc) => Boolean(doc.data().bookmarked));
+      }
+      if (sessionFilter) {
+         filteredDocs = filteredDocs.filter((doc) => doc.data().sessionId === sessionFilter);
+      }
+
+      const hasMore = filteredDocs.length > limit;
+      const pageDocs = filteredDocs.slice(0, limit);
+
+      const questions = pageDocs.map((doc) => {
+         const data = doc.data();
+         const createdAt = data.createdAt?.toDate
+            ? data.createdAt.toDate().toISOString()
+            : data.createdAt ?? null;
+         return {
+            id: doc.id,
+            ...data,
+            bookmarked: Boolean(data.bookmarked),
+            createdAt,
+         };
       });
+
+      res.json({ success: true, questions, stats, hasMore });
    } catch (err) {
       next(err);
    }
@@ -129,6 +227,73 @@ async function getSavedQuestions(req, res, next) {
 
 router.get('/saved', getSavedQuestions);
 router.get('/', getSavedQuestions);
+
+/**
+ * PATCH /api/questions/:id/bookmark and PATCH /api/questions/:id
+ * Toggles or sets bookmark status for a question.
+ */
+async function toggleQuestionBookmark(req, res, next) {
+   try {
+      const { id } = req.params;
+      if (!id) {
+         return res.status(400).json({ error: 'Question id is required.' });
+      }
+
+      const docRef = db.collection('savedQuestions').doc(id);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+         return res.status(404).json({ error: 'Question not found.' });
+      }
+
+      const data = doc.data();
+      if (data.userId !== req.uid && data.uid !== req.uid) {
+         return res.status(403).json({ error: 'Unauthorized to update this question.' });
+      }
+
+      const newBookmarked = req.body.bookmarked !== undefined
+         ? Boolean(req.body.bookmarked)
+         : !Boolean(data.bookmarked);
+
+      await docRef.update({ bookmarked: newBookmarked });
+
+      // If associated with a session, update the embedded question in the session doc
+      if (data.sessionId) {
+         try {
+            const sessionRef = db.collection('users').doc(req.uid).collection('practiceSessions').doc(data.sessionId);
+            const sSnap = await sessionRef.get();
+            if (sSnap.exists) {
+               const sData = sSnap.data();
+               if (Array.isArray(sData.questionLogs)) {
+                  const updatedLogs = sData.questionLogs.map((item) => {
+                     if (item.id === id) {
+                        return { ...item, bookmarked: newBookmarked };
+                     }
+                     return item;
+                  });
+                  await sessionRef.update({ questionLogs: updatedLogs });
+               }
+            }
+         } catch (sessErr) {
+            console.warn('Could not update session questionLogs bookmark:', sessErr);
+         }
+      }
+
+      res.json({
+         success: true,
+         id,
+         bookmarked: newBookmarked,
+         message: newBookmarked ? 'Question bookmarked.' : 'Bookmark removed.',
+      });
+   } catch (err) {
+      next(err);
+   }
+}
+
+router.patch('/:id/bookmark', toggleQuestionBookmark);
+router.post('/:id/bookmark', toggleQuestionBookmark);
+router.patch('/saved/:id/bookmark', toggleQuestionBookmark);
+router.patch('/:id', toggleQuestionBookmark);
 
 /**
  * DELETE /api/questions/:id and DELETE /api/questions/saved/:id
@@ -170,3 +335,4 @@ router.delete('/saved/:id', deleteSavedQuestion);
 router.delete('/:id', deleteSavedQuestion);
 
 module.exports = router;
+

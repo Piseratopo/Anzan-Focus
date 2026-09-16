@@ -21,6 +21,7 @@ const DEFAULT_PRACTICE_SETTINGS = {
   questionCount: 10,
   soundEffects: true,
   dictationMode: false,
+  reducePulse: false,
 };
 
 /**
@@ -127,6 +128,10 @@ const saveSettingsHandler = async (req, res, next) => {
 
     if (incoming.dictationMode !== undefined) {
       sanitized.dictationMode = Boolean(incoming.dictationMode);
+    }
+
+    if (incoming.reducePulse !== undefined) {
+      sanitized.reducePulse = Boolean(incoming.reducePulse);
     }
 
     // Fetch existing settings to merge

@@ -23,7 +23,7 @@ function randomInt(min: number, max: number): number {
  */
 const OP_SYMBOLS: Record<string, string> = {
   addition: '+',
-  subtraction: '-',
+  subtraction: '−', // Mathematical minus sign (U+2212)
   multiplication: '×',
   division: '÷',
 };
@@ -73,18 +73,18 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
         } else if (!allowNegative) {
           nextNum = randomInt(minValue, Math.min(maxValue, currentVal));
           nums.push(nextNum);
-          ops.push('-');
+          ops.push('−');
           currentVal -= nextNum;
         } else {
           nextNum = randomInt(minValue, maxValue);
           nums.push(nextNum);
-          ops.push('-');
+          ops.push('−');
           currentVal -= nextNum;
         }
       }
     }
 
-    let expressionStr = `${nums[0]}`;
+    let expressionStr = `${nums[0] < 0 ? '−' + Math.abs(nums[0]) : nums[0]}`;
     for (let i = 0; i < ops.length; i++) {
       expressionStr += ` ${ops[i]} ${nums[i + 1]}`;
     }
@@ -114,10 +114,10 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
       const nextNum = randomInt(minValue, maxValue);
       nums.push(nextNum);
       ops.push('+');
-    } else if (symbol === '-') {
+    } else if (symbol === '−' || symbol === '-') {
       let nextNum = randomInt(minValue, maxValue);
       nums.push(nextNum);
-      ops.push('-');
+      ops.push('−');
     } else if (symbol === '×') {
       // Keep multiplication operands reasonable for mental calculation
       const multMax = Math.min(maxValue, 12);
@@ -137,13 +137,14 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
   }
 
   // Build display expression and calculate true evaluation
-  let displayStr = `${nums[0]}`;
+  let displayStr = `${nums[0] < 0 ? '−' + Math.abs(nums[0]) : nums[0]}`;
   let evalExpression = `${nums[0]}`;
 
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i];
-    displayStr += ` ${op} ${nums[i + 1]}`;
-    const jsOp = op === '×' ? '*' : op === '÷' ? '/' : op;
+    const displayOp = (op === '-' || op === '−') ? '−' : op;
+    displayStr += ` ${displayOp} ${nums[i + 1]}`;
+    const jsOp = op === '×' ? '*' : op === '÷' ? '/' : (op === '−' || op === '-') ? '-' : op;
     evalExpression += ` ${jsOp} ${nums[i + 1]}`;
   }
 
@@ -160,12 +161,13 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
   if (!allowNegative && calculatedAnswer < 0) {
     const adjustment = Math.abs(calculatedAnswer) + randomInt(1, 10);
     nums[0] += adjustment;
-    displayStr = `${nums[0]}`;
+    displayStr = `${nums[0] < 0 ? '−' + Math.abs(nums[0]) : nums[0]}`;
     evalExpression = `${nums[0]}`;
     for (let i = 0; i < ops.length; i++) {
       const op = ops[i];
-      displayStr += ` ${op} ${nums[i + 1]}`;
-      const jsOp = op === '×' ? '*' : op === '÷' ? '/' : op;
+      const displayOp = (op === '-' || op === '−') ? '−' : op;
+      displayStr += ` ${displayOp} ${nums[i + 1]}`;
+      const jsOp = op === '×' ? '*' : op === '÷' ? '/' : (op === '−' || op === '-') ? '-' : op;
       evalExpression += ` ${jsOp} ${nums[i + 1]}`;
     }
     // eslint-disable-next-line no-eval

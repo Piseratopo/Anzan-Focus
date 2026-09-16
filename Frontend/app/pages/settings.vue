@@ -478,6 +478,31 @@
               </div>
 
               <div class="flex flex-col space-y-sm z-10">
+                <!-- Reduce Pulse (Linear Zoom) -->
+                <button
+                  type="button"
+                  @click="settings.reducePulse = !settings.reducePulse; saveSettings()"
+                  class="flex items-center justify-between p-xs rounded-lg border border-transparent hover:border-surface-variant hover:bg-surface-container-low/60 transition-all text-left w-full group/pulse cursor-pointer select-none"
+                >
+                  <div class="flex items-center space-x-sm">
+                    <span class="material-symbols-outlined text-on-surface-variant group-hover/pulse:text-primary text-[20px] transition-colors">animation</span>
+                    <div class="flex flex-col">
+                      <span class="font-body-md text-sm text-on-surface group-hover/pulse:text-primary font-medium transition-colors">Reduce Pulse</span>
+                      <span class="text-[11px] text-on-surface-variant/80 font-label-sm">Numbers will have less transistion.</span>
+                    </div>
+                  </div>
+                  <!-- Toggle Switch -->
+                  <div
+                    :class="settings.reducePulse ? 'bg-primary' : 'bg-surface-container-high'"
+                    class="relative w-11 h-6 rounded-full transition-colors duration-300 flex-shrink-0"
+                  >
+                    <div
+                      :class="settings.reducePulse ? 'translate-x-5' : 'translate-x-0'"
+                      class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300"
+                    ></div>
+                  </div>
+                </button>
+
                 <!-- Sound Effects (Coming Soon) -->
                 <div class="flex items-center justify-between p-xs rounded-lg border border-transparent hover:border-surface-variant hover:bg-surface-container-low/60 transition-all">
                   <div class="flex items-center space-x-sm">

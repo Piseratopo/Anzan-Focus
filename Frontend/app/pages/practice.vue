@@ -42,6 +42,10 @@
                 <span class="material-symbols-outlined text-[15px] text-primary">functions</span>
                 <span>{{ settings.operations.join(', ') }}</span>
               </span>
+              <span v-if="settings.reducePulse" class="px-sm py-xs bg-surface rounded-full text-xs font-label-md text-on-surface border border-surface-variant/60 flex items-center gap-xs">
+                <span class="material-symbols-outlined text-[15px] text-primary">animation</span>
+                <span>Linear Zoom (Reduced Pulse)</span>
+              </span>
             </div>
 
             <!-- Big Play / Start Button -->
@@ -173,13 +177,22 @@
 
               <!-- 2. Per Operand Mode: Number Currently Flashing -->
               <template v-else-if="isFlashing">
-                <div class="flex flex-col items-center space-y-xs transition-transform duration-100 scale-100" :key="currentFlashIndex">
+                <div class="flex flex-col items-center space-y-xs">
                   <span class="text-xs font-label-sm uppercase tracking-widest text-primary font-semibold px-2 py-0.5 rounded-full bg-primary/10 mb-1">
                     Operand {{ currentFlashIndex + 1 }} of {{ flashItems.length }}
                   </span>
-                  <h2 class="font-display-xl text-4xl md:text-6xl lg:text-7xl text-on-surface tracking-tight select-none font-extrabold">
-                    {{ currentFlashToken }}
-                  </h2>
+                  <div class="min-h-[80px] flex items-center justify-center">
+                    <h2 
+                      :key="currentFlashIndex"
+                      :class="[
+                        'font-display-xl text-4xl md:text-6xl lg:text-7xl text-on-surface tracking-tight select-none font-extrabold',
+                        settings.reducePulse ? 'flash-number-linear' : 'flash-number-zoom'
+                      ]"
+                      :style="{ animationDuration: `${zoomDurationMs}ms` }"
+                    >
+                      {{ currentFlashToken }}
+                    </h2>
+                  </div>
                 </div>
               </template>
 
@@ -206,19 +219,19 @@
                 {{ feedbackState === 'correct' ? 'check_circle' : 'cancel' }}
               </span>
               <span>
-                {{ feedbackState === 'correct' ? 'Correct!' : feedbackState === 'time_up' ? `Time's up! Answer: ${currentQuestion?.correctAnswer}` : `Incorrect! Answer: ${currentQuestion?.correctAnswer}` }}
+                {{ feedbackState === 'correct' ? 'Correct!' : feedbackState === 'time_up' ? `Time's up! Answer: ${formatMinus(currentQuestion?.correctAnswer)}` : `Incorrect! Answer: ${formatMinus(currentQuestion?.correctAnswer)}` }}
               </span>
             </div>
           </div>
 
-          <!-- Answer Input Form -->
+          <!-- Answer Input Form (Accepts standard -, unicode −, en-dash –, or em-dash —) -->
           <form @submit.prevent="submitAnswer" class="relative w-full group">
             <input 
               ref="answerInputRef"
               v-model="userAnswer" 
               :disabled="Boolean(feedbackState)"
-              type="number"
-              step="any"
+              type="text"
+              inputmode="decimal"
               autofocus
               :placeholder="isPerOperandMode && isFlashing ? 'Flashing numbers... (you can type answer)' : 'Enter your answer'"
               class="w-full bg-surface-container-lowest border-2 border-surface-container-high hover:border-primary/50 rounded-xl py-md px-lg text-center font-headline-lg text-xl md:text-2xl text-on-surface focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all duration-200 placeholder-on-surface-variant/40 shadow-sm disabled:opacity-75 disabled:cursor-not-allowed" 
@@ -227,7 +240,7 @@
             <div class="absolute inset-y-0 right-3 flex items-center">
               <button 
                 type="submit"
-                :disabled="Boolean(feedbackState) || userAnswer === ''"
+                :disabled="Boolean(feedbackState) || userAnswer.trim() === ''"
                 class="bg-primary hover:bg-primary/90 text-on-primary rounded-full p-2 transition-all duration-200 active:scale-95 shadow-md flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
                 title="Submit Answer"
               >
@@ -315,20 +328,31 @@
                         </td>
 
                         <!-- Expression Column -->
+                        <!-- Expression Column -->
                         <td class="py-sm px-md font-mono text-sm md:text-base font-medium text-on-surface">
-                          {{ log.displayStr }}
+                          <div class="flex items-center gap-xs">
+                            <span>{{ formatMinus(log.displayStr || log.expressionStr) }}</span>
+                            <span 
+                              v-if="log.bookmarked" 
+                              class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                              title="Bookmarked"
+                            >
+                              <span class="material-symbols-outlined text-[11px]" style="font-variation-settings: 'FILL' 1;">bookmark</span>
+                              Bookmarked
+                            </span>
+                          </div>
                         </td>
 
                         <!-- Your Answer Column -->
                         <td class="py-sm px-md text-center">
                           <span :class="log.status === 'correct' ? 'text-primary font-bold' : 'text-error font-medium line-through'">
-                            {{ log.userAnswer !== null ? log.userAnswer : "Time's up" }}
+                            {{ log.userAnswer !== null ? formatMinus(log.userAnswer) : "Time's up" }}
                           </span>
                         </td>
 
                         <!-- Correct Answer Column -->
                         <td class="py-sm px-md text-center font-bold text-on-surface">
-                          {{ log.correctAnswer }}
+                          {{ formatMinus(log.correctAnswer) }}
                         </td>
 
                         <!-- Time Column -->
@@ -336,31 +360,31 @@
                           {{ log.timeTaken.toFixed(1) }}s
                         </td>
 
-                        <!-- Actions Column (Ready for future actions) -->
+                        <!-- Actions Column -->
                         <td class="py-sm px-md text-right pr-lg">
                           <div class="flex items-center justify-end gap-xs">
-                            <!-- Save Question Play -->
+                            <!-- Bookmark Question -->
                             <button 
                               type="button"
-                              @click="handleSaveQuestion(log, idx)"
-                              :disabled="log.isSaving"
-                              :title="log.isSaved ? 'Saved! Click to remove from collection' : 'Save question play'"
+                              @click="handleToggleBookmark(log, idx)"
+                              :disabled="log.isBookmarking"
+                              :title="log.bookmarked ? 'Bookmarked! Click to remove bookmark' : 'Bookmark question'"
                               class="p-1.5 rounded-md transition-all active:scale-90 flex items-center justify-center"
                               :class="[
-                                log.isSaved 
-                                  ? 'text-primary bg-primary/15 hover:bg-primary/25' 
-                                  : 'text-on-surface-variant hover:text-primary hover:bg-primary/10',
-                                log.isSaving ? 'opacity-70 cursor-wait' : ''
+                                log.bookmarked 
+                                  ? 'text-amber-600 dark:text-amber-400 bg-amber-500/15 hover:bg-amber-500/25' 
+                                  : 'text-on-surface-variant hover:text-amber-600 hover:bg-amber-500/10',
+                                log.isBookmarking ? 'opacity-70 cursor-wait' : ''
                               ]"
                             >
-                              <span v-if="log.isSaving" class="material-symbols-outlined text-[18px] animate-spin">
+                              <span v-if="log.isBookmarking" class="material-symbols-outlined text-[18px] animate-spin">
                                 progress_activity
                               </span>
-                              <span v-else-if="log.isSaved" class="material-symbols-outlined text-[18px] text-primary" style="font-variation-settings: 'FILL' 1;">
-                                bookmark_added
+                              <span v-else-if="log.bookmarked" class="material-symbols-outlined text-[18px] text-amber-600 dark:text-amber-400" style="font-variation-settings: 'FILL' 1;">
+                                bookmark
                               </span>
                               <span v-else class="material-symbols-outlined text-[18px]">
-                                bookmark_add
+                                bookmark_border
                               </span>
                             </button>
 
@@ -465,6 +489,7 @@ const incorrectCount = ref(0);
 const feedbackState = ref<'' | 'correct' | 'incorrect' | 'time_up'>('');
 
 interface QuestionLog {
+  id?: string;
   expressionStr: string;
   displayStr: string;
   operands?: number[];
@@ -474,9 +499,8 @@ interface QuestionLog {
   status: 'correct' | 'incorrect' | 'time_up';
   timeTaken: number;
   settingsSnapshot?: any;
-  isSaved?: boolean;
-  isSaving?: boolean;
-  savedDocId?: string;
+  bookmarked?: boolean;
+  isBookmarking?: boolean;
 }
 const sessionLogs = ref<QuestionLog[]>([]);
 
@@ -487,7 +511,7 @@ const currentFlashIndex = ref(0);
 const elapsedFlashSeconds = ref(0);
 const elapsedTotalSeconds = ref(0);
 
-// Deconstruct current question into sequential flash items (e.g. ['25', '+ 14', '- 8'])
+// Deconstruct current question into sequential flash items (e.g. ['25', '+ 14', '− 8'])
 const flashItems = computed(() => {
   if (!currentQuestion.value) return [];
   const operands = currentQuestion.value.operands || [];
@@ -495,9 +519,11 @@ const flashItems = computed(() => {
   if (operands.length === 0) return [];
 
   const items: string[] = [];
-  items.push(`${operands[0]}`);
+  const first = operands[0];
+  items.push(first < 0 ? `−${Math.abs(first)}` : `${first}`);
   for (let i = 1; i < operands.length; i++) {
-    const op = operators[i - 1] || '+';
+    const rawOp = operators[i - 1] || '+';
+    const op = (rawOp === '-' || rawOp === '−') ? '−' : rawOp;
     items.push(`${op} ${operands[i]}`);
   }
   return items;
@@ -506,6 +532,15 @@ const flashItems = computed(() => {
 const currentFlashToken = computed(() => {
   if (!flashItems.value.length) return '';
   return flashItems.value[currentFlashIndex.value] || '';
+});
+
+// Calculate snappy zoom-in animation duration proportional to the per-number flash speed
+const zoomDurationMs = computed(() => {
+  const count = flashItems.value.length || 1;
+  const itemDuration = (totalAllowedTime.value / count) * 1000;
+  const ratio = settings.value.reducePulse ? 0.2 : 0.2;
+  const maxCap = settings.value.reducePulse ? 60 : 150;
+  return Math.min(maxCap, Math.max(10, Math.round(itemDuration * ratio)));
 });
 
 // Timer State
@@ -648,18 +683,36 @@ const handleTimeUp = () => {
     status: 'time_up',
     timeTaken,
     settingsSnapshot: { ...settings.value },
-    isSaved: false,
-    isSaving: false,
+    bookmarked: false,
+    isBookmarking: false,
   });
 
   transitionToNext();
 };
 
+// Helper to format any string or number to use mathematical minus sign (−) for display
+const formatMinus = (val: string | number | null | undefined): string => {
+  if (val === null || val === undefined) return '';
+  return String(val).replace(/-/g, '−');
+};
+
+// Normalizes user input so it can accept standard minus (-), Unicode minus (− \u2212), en dash (– \u2013), em dash (— \u2014), fullwidth minus (－ \uFF0D)
+const normalizeAnswerInput = (raw: string): number => {
+  if (!raw) return NaN;
+  const normalized = raw.replace(/[\u2212\u2013\u2014\uFF0D]/g, '-').trim();
+  return Number(normalized);
+};
+
 const submitAnswer = () => {
-  if (feedbackState.value || userAnswer.value === '' || !currentQuestion.value) return;
+  if (feedbackState.value || !userAnswer.value.trim() || !currentQuestion.value) return;
+
+  const numAnswer = normalizeAnswerInput(userAnswer.value);
+  if (isNaN(numAnswer)) {
+    showToast('Please enter a valid number', 'error');
+    return;
+  }
 
   stopTimer();
-  const numAnswer = Number(userAnswer.value);
   const isCorrect = Math.abs(numAnswer - currentQuestion.value.correctAnswer) < 0.001;
   // Total time includes the display time + answer time
   const timeTaken = Math.max(0.1, (Date.now() - questionStartTime) / 1000);
@@ -682,8 +735,8 @@ const submitAnswer = () => {
     status: isCorrect ? 'correct' : 'incorrect',
     timeTaken,
     settingsSnapshot: { ...settings.value },
-    isSaved: false,
-    isSaving: false,
+    bookmarked: false,
+    isBookmarking: false,
   });
 
   transitionToNext();
@@ -699,9 +752,12 @@ const transitionToNext = () => {
   }, 900); // 900ms feedback pause before next expression
 };
 
-const finishSession = () => {
+const finishSession = async () => {
   stopTimer();
   gameState.value = 'completed';
+
+  // Automatically save session and all questions to history
+  await autoSaveSessionToHistory();
 };
 
 const stopPracticeAndExit = () => {
@@ -741,10 +797,10 @@ const handleAction = (actionType: 'copy', log: QuestionLog, index: number) => {
 };
 
 /**
- * Saves or toggles saving of an individual question play to the backend.
+ * Automatically records the completed practice session and all its questions into history.
  */
-const handleSaveQuestion = async (log: QuestionLog, index: number) => {
-  if (log.isSaving) return;
+const autoSaveSessionToHistory = async () => {
+  if (sessionLogs.value.length === 0) return;
 
   const config = useRuntimeConfig();
   const apiBase = config.public.apiBase || 'http://localhost:3001';
@@ -752,7 +808,6 @@ const handleSaveQuestion = async (log: QuestionLog, index: number) => {
     ? localStorage.getItem('anzan_token') || sessionStorage.getItem('anzan_token')
     : null;
 
-  // If token is missing, check if logged-in user profile exists in localStorage/sessionStorage
   if (!token && import.meta.client) {
     try {
       const userRaw = localStorage.getItem('anzan_user') || sessionStorage.getItem('anzan_user');
@@ -768,35 +823,17 @@ const handleSaveQuestion = async (log: QuestionLog, index: number) => {
     }
   }
 
-  // Toggle unsave if question is already saved and has an ID
-  if (log.isSaved && log.savedDocId) {
-    try {
-      log.isSaving = true;
-      if (token) {
-        await $fetch(`${apiBase}/api/questions/saved/${log.savedDocId}`, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      }
-      log.isSaved = false;
-      log.savedDocId = undefined;
-      showToast('Question removed from saved collection', 'bookmark_remove');
-    } catch (err: any) {
-      console.error('Failed to remove saved question:', err);
-      showToast('Could not remove question: ' + (err?.data?.error || err?.message || 'Error'), 'error');
-    } finally {
-      log.isSaving = false;
-    }
-    return;
-  }
-
-  // Save question play
-  try {
-    log.isSaving = true;
-
-    const payload = {
+  const sessionPayload = {
+    session: {
+      totalQuestions: sessionLogs.value.length,
+      correctCount: correctCount.value,
+      incorrectCount: incorrectCount.value,
+      timeUpCount: sessionLogs.value.filter((l) => l.status === 'time_up').length,
+      averageSpeed: Number(averageSpeed.value),
+      operationTags: [settings.value.operation],
+      settings: { ...settings.value },
+    },
+    questionLogs: sessionLogs.value.map((log, idx) => ({
       expressionStr: log.expressionStr,
       displayStr: log.displayStr,
       operands: log.operands || [],
@@ -805,58 +842,159 @@ const handleSaveQuestion = async (log: QuestionLog, index: number) => {
       correctAnswer: log.correctAnswer,
       status: log.status,
       timeTaken: log.timeTaken,
-      questionIndex: index + 1,
+      bookmarked: Boolean(log.bookmarked),
+      questionIndex: idx + 1,
       totalQuestions: sessionLogs.value.length,
-      settings: log.settingsSnapshot || { ...settings.value },
-    };
+      settingsSnapshot: log.settingsSnapshot || { ...settings.value },
+    })),
+  };
 
-    if (!token) {
-      // Guest fallback: persist to localStorage
-      if (import.meta.client) {
-        try {
-          const raw = localStorage.getItem('anzan_saved_questions');
-          const savedList = raw ? JSON.parse(raw) : [];
-          savedList.push({
-            id: `local_${Date.now()}_${index}`,
-            ...payload,
-            createdAt: new Date().toISOString(),
-          });
-          localStorage.setItem('anzan_saved_questions', JSON.stringify(savedList));
-        } catch (e) {
-          console.warn('Failed to save to localStorage', e);
-        }
+  if (!token) {
+    // Guest fallback: store in localStorage
+    if (import.meta.client) {
+      try {
+        const localSessionId = `local_sess_${Date.now()}`;
+        const rawSessions = localStorage.getItem('anzan_sessions');
+        const sessionsList = rawSessions ? JSON.parse(rawSessions) : [];
+        const enrichedLogs = sessionPayload.questionLogs.map((q, i) => ({
+          ...q,
+          id: `local_q_${Date.now()}_${i}`,
+          sessionId: localSessionId,
+          createdAt: new Date().toISOString(),
+        }));
+
+        sessionsList.unshift({
+          sessionId: localSessionId,
+          id: localSessionId,
+          ...sessionPayload.session,
+          questionLogs: enrichedLogs,
+          timestamp: new Date().toISOString(),
+        });
+        localStorage.setItem('anzan_sessions', JSON.stringify(sessionsList));
+
+        // Also add questions to anzan_saved_questions
+        const rawQ = localStorage.getItem('anzan_saved_questions');
+        const qList = rawQ ? JSON.parse(rawQ) : [];
+        enrichedLogs.forEach((item) => qList.unshift(item));
+        localStorage.setItem('anzan_saved_questions', JSON.stringify(qList));
+
+        // Update sessionLogs with local IDs
+        enrichedLogs.forEach((item, idx) => {
+          if (sessionLogs.value[idx]) {
+            sessionLogs.value[idx].id = item.id;
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to save session.', e);
       }
-      log.isSaved = true;
-      showToast('Question saved locally! (Sign in to sync with cloud)', 'cloud_off');
-      return;
     }
+    showToast('Session saved!', 'history');
+    return;
+  }
 
-    // Call backend API
-    const response = await $fetch<{ success: boolean; id: string; message: string }>(
-      `${apiBase}/api/questions/save`,
-      {
-        method: 'POST',
+  try {
+    const res = await $fetch<{
+      success: boolean;
+      sessionId: string;
+      questionLogs?: Array<{ id: string }>;
+    }>(`${apiBase}/api/sessions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: sessionPayload,
+    });
+
+    if (res?.success && Array.isArray(res.questionLogs)) {
+      res.questionLogs.forEach((item, idx) => {
+        if (sessionLogs.value[idx]) {
+          sessionLogs.value[idx].id = item.id;
+        }
+      });
+      showToast('Session saved!', 'history');
+    }
+  } catch (err) {
+    console.error('Failed to save session:', err);
+  }
+};
+
+/**
+ * Toggles the bookmark status of an individual question play.
+ */
+const handleToggleBookmark = async (log: QuestionLog, index: number) => {
+  if (log.isBookmarking) return;
+  log.isBookmarking = true;
+
+  const targetState = !Boolean(log.bookmarked);
+
+  const config = useRuntimeConfig();
+  const apiBase = config.public.apiBase || 'http://localhost:3001';
+  let token = import.meta.client
+    ? localStorage.getItem('anzan_token') || sessionStorage.getItem('anzan_token')
+    : null;
+
+  if (!token && import.meta.client) {
+    try {
+      const userRaw = localStorage.getItem('anzan_user') || sessionStorage.getItem('anzan_user');
+      if (userRaw) {
+        const parsed = JSON.parse(userRaw);
+        if (parsed?.uid) token = parsed.uid;
+      }
+    } catch (e) {
+      console.warn('Error reading token', e);
+    }
+  }
+
+  // If question ID is present and user is logged in, sync with API
+  if (token && log.id) {
+    try {
+      await $fetch(`${apiBase}/api/questions/${log.id}/bookmark`, {
+        method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: payload,
-      }
-    );
-
-    if (response && response.success) {
-      log.isSaved = true;
-      log.savedDocId = response.id;
-      showToast('Question saved to history!', 'bookmark_added');
-    } else {
-      throw new Error(response?.message || 'Failed to save question');
+        body: { bookmarked: targetState },
+      });
+      log.bookmarked = targetState;
+      showToast(
+        targetState ? 'Question bookmarked!' : 'Bookmark removed',
+        targetState ? 'bookmark_added' : 'bookmark_remove'
+      );
+    } catch (err: any) {
+      console.error('Failed to update bookmark:', err);
+      showToast('Failed to update bookmark: ' + (err?.data?.error || err?.message || 'Error'), 'error');
+    } finally {
+      log.isBookmarking = false;
     }
-  } catch (err: any) {
-    console.error('Failed to save question play:', err);
-    const errMsg = err?.data?.error || err?.message || 'Failed to save question';
-    showToast(errMsg, 'error');
-  } finally {
-    log.isSaving = false;
+    return;
+  }
+
+  // Guest / local fallback
+  if (import.meta.client) {
+    try {
+      log.bookmarked = targetState;
+      const raw = localStorage.getItem('anzan_saved_questions');
+      if (raw) {
+        const list = JSON.parse(raw);
+        const match = list.find(
+          (q: any) => q.id === log.id || (q.expressionStr === log.expressionStr && q.correctAnswer === log.correctAnswer)
+        );
+        if (match) {
+          match.bookmarked = targetState;
+          localStorage.setItem('anzan_saved_questions', JSON.stringify(list));
+        }
+      }
+      showToast(
+        targetState ? 'Question bookmarked locally!' : 'Bookmark removed',
+        targetState ? 'bookmark_added' : 'bookmark_remove'
+      );
+    } catch (e) {
+      console.warn('Failed to update local bookmark', e);
+    } finally {
+      log.isBookmarking = false;
+    }
   }
 };
 
@@ -864,3 +1002,53 @@ onUnmounted(() => {
   stopTimer();
 });
 </script>
+
+<style scoped>
+/* Standard energetic flash zoom with subtle pulse overshoot */
+@keyframes flashZoomIn {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.2;
+  }
+  65% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Reduced pulse: clean, purely linear zoom directly to normal scale */
+@keyframes flashZoomInLinear {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.flash-number-zoom {
+  display: inline-block;
+  transform-origin: center center;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  animation-name: flashZoomIn;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+.flash-number-linear {
+  display: inline-block;
+  transform-origin: center center;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  animation-name: flashZoomInLinear;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+</style>
