@@ -2,6 +2,7 @@ import { useState } from '#imports';
 
 export interface PracticeSettings {
   operations: string[];
+  operationWeights: Record<string, number>;
   minValue: number;
   maxValue: number;
   allowNegative: boolean;
@@ -16,6 +17,7 @@ export interface PracticeSettings {
 
 const DEFAULT_SETTINGS: PracticeSettings = {
   operations: ['addition', 'subtraction'],
+  operationWeights: { addition: 5, subtraction: 5, multiplication: 5, division: 5 },
   minValue: 1,
   maxValue: 100,
   allowNegative: false,

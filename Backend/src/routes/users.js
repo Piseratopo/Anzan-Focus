@@ -12,6 +12,7 @@ router.use(verifyToken);
  */
 const DEFAULT_PRACTICE_SETTINGS = {
   operations: ['addition', 'subtraction'],
+  operationWeights: { addition: 5, subtraction: 5, multiplication: 5, division: 5 },
   minValue: 1,
   maxValue: 100,
   allowNegative: false,
@@ -132,6 +133,20 @@ const saveSettingsHandler = async (req, res, next) => {
 
     if (incoming.reducePulse !== undefined) {
       sanitized.reducePulse = Boolean(incoming.reducePulse);
+    }
+
+    // Persist operation probability weights (values clamped to 1-10)
+    if (incoming.operationWeights !== null && typeof incoming.operationWeights === 'object' && !Array.isArray(incoming.operationWeights)) {
+      const validOps = ['addition', 'subtraction', 'multiplication', 'division'];
+      const weights = {};
+      for (const op of validOps) {
+        if (incoming.operationWeights[op] !== undefined) {
+          weights[op] = Math.max(1, Math.min(10, parseInt(incoming.operationWeights[op], 10) || 5));
+        }
+      }
+      if (Object.keys(weights).length > 0) {
+        sanitized.operationWeights = weights;
+      }
     }
 
     // Fetch existing settings to merge

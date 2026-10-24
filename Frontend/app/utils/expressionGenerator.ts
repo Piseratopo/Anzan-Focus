@@ -29,11 +29,28 @@ const OP_SYMBOLS: Record<string, string> = {
 };
 
 /**
+ * Picks a random operation name from a list, weighted by the weights map.
+ * Operations with higher weights are chosen more often.
+ * Falls back to uniform random if no valid weights are found.
+ */
+function weightedRandomOp(ops: string[], weights: Record<string, number>): string {
+  const totalWeight = ops.reduce((sum, op) => sum + Math.max(0, weights[op] ?? 5), 0);
+  if (totalWeight === 0) return ops[randomInt(0, ops.length - 1)];
+  let rand = Math.random() * totalWeight;
+  for (const op of ops) {
+    rand -= Math.max(0, weights[op] ?? 5);
+    if (rand <= 0) return op;
+  }
+  return ops[ops.length - 1];
+}
+
+/**
  * Generates a valid mental math expression matching the user's practice settings.
  */
 export function generateQuestion(settings: PracticeSettings): GeneratedQuestion {
   const {
     operations = ['addition'],
+    operationWeights = {},
     minValue = 1,
     maxValue = 100,
     allowNegative = false,
@@ -53,7 +70,7 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
     nums.push(currentVal);
 
     for (let i = 1; i < count; i++) {
-      const selectedOpName = validOps[randomInt(0, validOps.length - 1)];
+      const selectedOpName = weightedRandomOp(validOps, operationWeights);
       const symbol = OP_SYMBOLS[selectedOpName] || '+';
 
       if (symbol === '+') {
@@ -62,22 +79,12 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
         ops.push('+');
         currentVal += nextNum;
       } else {
-        // Subtraction
-        let nextNum: number;
-        if (!allowNegative && currentVal <= minValue) {
-          // If we can't subtract without going negative, switch to addition
-          nextNum = randomInt(minValue, maxValue);
-          nums.push(nextNum);
+        const nextNum = randomInt(minValue, maxValue);
+        nums.push(nextNum);
+        if (!allowNegative && currentVal - nextNum < 0) {
           ops.push('+');
           currentVal += nextNum;
-        } else if (!allowNegative) {
-          nextNum = randomInt(minValue, Math.min(maxValue, currentVal));
-          nums.push(nextNum);
-          ops.push('−');
-          currentVal -= nextNum;
         } else {
-          nextNum = randomInt(minValue, maxValue);
-          nums.push(nextNum);
           ops.push('−');
           currentVal -= nextNum;
         }
@@ -107,7 +114,7 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
   nums.push(firstNum);
 
   for (let i = 1; i < count; i++) {
-    const selectedOpName = validOps[randomInt(0, validOps.length - 1)];
+    const selectedOpName = weightedRandomOp(validOps, operationWeights);
     const symbol = OP_SYMBOLS[selectedOpName] || '+';
 
     if (symbol === '+') {

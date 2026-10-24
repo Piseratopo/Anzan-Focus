@@ -142,6 +142,116 @@
                   </div>
                 </button>
               </div>
+
+              <!-- Operation Probability Section (shown only when multiple ops are selected) -->
+              <transition name="fade-slide">
+                <div
+                  v-if="settings.operations.length > 1"
+                  class="z-10 pt-sm border-t border-surface-container-high/60"
+                >
+                  <!-- Header row with toggle -->
+                  <button
+                    type="button"
+                    @click="showProbability = !showProbability"
+                    class="w-full flex items-center justify-between text-left group/prob mb-sm"
+                  >
+                    <div class="flex items-center gap-xs">
+                      <span class="material-symbols-outlined text-primary text-[18px]">percent</span>
+                      <span class="font-label-md text-sm text-on-surface font-medium">Operation Probability</span>
+                      <span class="text-[11px] text-on-surface-variant/70 font-label-sm ml-1">— adjust how often each op appears</span>
+                    </div>
+                    <span
+                      class="material-symbols-outlined text-on-surface-variant text-[20px] transition-transform duration-200"
+                      :class="showProbability ? 'rotate-180' : ''"
+                    >expand_more</span>
+                  </button>
+
+                  <transition name="fade-slide">
+                    <div v-if="showProbability" class="flex flex-col gap-sm">
+                      <div
+                        v-for="op in settings.operations"
+                        :key="op"
+                        class="flex flex-col gap-xs"
+                      >
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center gap-xs">
+                            <span class="w-6 text-center text-base font-bold text-primary">{{ opSymbols[op] }}</span>
+                            <span class="font-label-md text-sm text-on-surface capitalize">{{ op }}</span>
+                          </div>
+                          <div class="flex items-center gap-xs">
+                            <span class="text-[11px] font-label-sm text-primary font-semibold bg-primary/10 px-1.5 py-0.5 rounded-full min-w-[40px] text-center">
+                              {{ opPercent(op) }}%
+                            </span>
+                            <span class="text-[11px] text-on-surface-variant/70 font-label-sm">weight: {{ settings.operationWeights?.[op] ?? 5 }}</span>
+                          </div>
+                        </div>
+
+                        <!-- Slider row -->
+                        <div class="relative flex items-center gap-sm">
+                          <button
+                            type="button"
+                            @click="adjustWeight(op, -1)"
+                            :disabled="(settings.operationWeights?.[op] ?? 5) <= 1"
+                            class="w-6 h-6 flex items-center justify-center rounded-md bg-surface-container-low hover:bg-primary/10 text-on-surface-variant transition-colors active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                          >
+                            <span class="material-symbols-outlined text-[14px]">remove</span>
+                          </button>
+
+                          <div class="flex-1 relative h-4 flex items-center">
+                            <div class="absolute inset-0 flex items-center">
+                              <div class="w-full h-2 rounded-full bg-surface-container-high"></div>
+                              <div
+                                class="absolute left-0 h-2 rounded-full bg-primary/60 pointer-events-none transition-all duration-150"
+                                :style="{ width: (((settings.operationWeights?.[op] ?? 5) - 1) / 9 * 100) + '%' }"
+                              ></div>
+                            </div>
+                            <input
+                              type="range"
+                              :id="'weight-' + op"
+                              :min="1"
+                              :max="10"
+                              :step="1"
+                              :value="settings.operationWeights?.[op] ?? 5"
+                              @input="onWeightInput(op, $event)"
+                              class="relative w-full h-2 appearance-none rounded-full cursor-pointer bg-transparent z-10"
+                              style="accent-color: var(--color-primary)"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            @click="adjustWeight(op, 1)"
+                            :disabled="(settings.operationWeights?.[op] ?? 5) >= 10"
+                            class="w-6 h-6 flex items-center justify-center rounded-md bg-surface-container-low hover:bg-primary/10 text-on-surface-variant transition-colors active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                          >
+                            <span class="material-symbols-outlined text-[14px]">add</span>
+                          </button>
+                        </div>
+
+                        <!-- Visual probability fill bar -->
+                        <div class="h-1 rounded-full bg-surface-container-high overflow-hidden">
+                          <div
+                            class="h-full rounded-full bg-primary transition-all duration-300"
+                            :style="{ width: opPercent(op) + '%' }"
+                          ></div>
+                        </div>
+                      </div>
+
+                      <!-- Reset to equal -->
+                      <div class="flex justify-end pt-xs">
+                        <button
+                          type="button"
+                          @click="resetWeights"
+                          class="text-[11px] font-label-sm text-on-surface-variant hover:text-primary transition-colors flex items-center gap-xs px-2 py-1 rounded-md hover:bg-primary/5"
+                        >
+                          <span class="material-symbols-outlined text-[14px]">restart_alt</span>
+                          Reset to equal
+                        </button>
+                      </div>
+                    </div>
+                  </transition>
+                </div>
+              </transition>
             </section>
 
             <!-- Number Range Section Box -->
@@ -585,6 +695,49 @@ const {
   decrementQuestions,
 } = usePracticeSettings();
 
+// --- Operation Probability ---
+const showProbability = ref(false);
+
+const opSymbols: Record<string, string> = {
+  addition: '+',
+  subtraction: '−',
+  multiplication: '×',
+  division: '÷',
+};
+
+const opPercent = (op: string): number => {
+  const ops = settings.value.operations;
+  const weights = settings.value.operationWeights ?? {};
+  const total = ops.reduce((sum, o) => sum + Math.max(0, weights[o] ?? 5), 0);
+  if (total === 0) return Math.round(100 / ops.length);
+  return Math.round(((weights[op] ?? 5) / total) * 100);
+};
+
+const adjustWeight = (op: string, delta: number) => {
+  const w = { ...(settings.value.operationWeights ?? {}) };
+  w[op] = Math.min(10, Math.max(1, (w[op] ?? 5) + delta));
+  settings.value.operationWeights = w;
+  saveSettings();
+};
+
+const onWeightInput = (op: string, event: Event) => {
+  const val = parseInt((event.target as HTMLInputElement).value, 10);
+  if (!isNaN(val)) {
+    const w = { ...(settings.value.operationWeights ?? {}) };
+    w[op] = Math.min(10, Math.max(1, val));
+    settings.value.operationWeights = w;
+    saveSettings();
+  }
+};
+
+const resetWeights = () => {
+  const w: Record<string, number> = {};
+  for (const op of settings.value.operations) w[op] = 5;
+  settings.value.operationWeights = w;
+  saveSettings();
+};
+// --- End Operation Probability ---
+
 const isLoggedIn = ref(false);
 
 onMounted(() => {
@@ -642,4 +795,17 @@ const startPractice = () => {
   navigateTo('/practice');
 };
 </script>
+
+<style scoped>
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+</style>
+
 
