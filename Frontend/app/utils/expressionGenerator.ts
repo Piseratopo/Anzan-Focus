@@ -110,7 +110,7 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
   const nums: number[] = [];
   const ops: string[] = [];
 
-  let firstNum = randomInt(minValue, Math.min(maxValue, 50));
+  let firstNum = randomInt(minValue, maxValue);
   nums.push(firstNum);
 
   for (let i = 1; i < count; i++) {
@@ -126,9 +126,7 @@ export function generateQuestion(settings: PracticeSettings): GeneratedQuestion 
       nums.push(nextNum);
       ops.push('−');
     } else if (symbol === '×') {
-      // Keep multiplication operands reasonable for mental calculation
-      const multMax = Math.min(maxValue, 12);
-      const nextNum = randomInt(Math.max(2, minValue), Math.max(2, multMax));
+      const nextNum = randomInt(minValue, maxValue);
       nums.push(nextNum);
       ops.push('×');
     } else if (symbol === '÷') {
@@ -201,4 +199,3 @@ export function generateQuestionBatch(settings: PracticeSettings, count = 5): Ge
   }
   return batch;
 }
-
